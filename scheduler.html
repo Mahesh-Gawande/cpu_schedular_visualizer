@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SCHED // CPU Scheduling Visualizer</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
+
+  :root{
+    --bg: #0d1117;
+    --panel: #161b22;
+    --panel-2: #1c2128;
+    --line: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --amber: #ffb86c;
+    --cyan: #79dfff;
+    --danger: #ff6b6b;
+    --ok: #7ee787;
+  }
+
+  * { box-sizing: border-box; }
+
+  body{
+    margin:0;
+    background:
+      radial-gradient(circle at 20% 0%, rgba(121,223,255,0.05), transparent 40%),
+      radial-gradient(circle at 80% 100%, rgba(255,184,108,0.05), transparent 40%),
+      var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    min-height: 100vh;
+    padding: 24px 16px 60px;
+  }
+
+  .wrap{ max-width: 980px; margin: 0 auto; }
+
+  header{
+    display:flex; align-items:baseline; justify-content:space-between;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 16px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  header h1{
+    font-size: 1.15rem;
+    letter-spacing: 0.08em;
+    margin: 0;
+    font-weight: 700;
+  }
+  header h1 .slash{ color: var(--amber); }
+  header .status{
+    font-size: 0.72rem;
+    color: var(--muted);
+    letter-spacing: 0.05em;
+  }
+  header .status .dot{
+    display:inline-block; width:6px; height:6px; border-radius:50%;
+    background: var(--ok); margin-right:6px;
+    box-shadow: 0 0 6px var(--ok);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse{ 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  .panel{
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 18px;
+    margin-bottom: 20px;
+  }
+  .panel h2{
+    font-size: 0.78rem;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin: 0 0 14px 0;
+    display:flex; align-items:center; gap:8px;
+  }
+  .panel h2::before{
+    content:'';
+    width:3px; height:14px;
+    background: var(--cyan);
+    display:inline-block;
+  }
+
+  table{ width:100%; border-collapse: collapse; }
+  th{
+    text-align:left; font-size:0.68rem; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    padding: 6px 8px; border-bottom: 1px solid var(--line);
+  }
+  td{ padding: 6px 8px; }
+  tbody tr:hover{ background: var(--panel-2); }
+
+  input[type=number]{
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    color: var(--text);
+    font-family: inherit;
+    padding: 5px 6px;
+    border-radius: 4px;
+    font-size: 0.85rem;
+  }
+  input[type=number]:focus{ outline: 1px solid var(--cyan); border-color: var(--cyan); }
+
+  .pid-tag{
+    display:inline-flex; align-items:center; gap:6px;
+    font-weight:600; font-size:0.85rem;
+  }
+  .swatch{ width:10px; height:10px; border-radius:2px; flex-shrink:0; }
+
+  .row-actions{ display:flex; gap:8px; margin-top: 12px; flex-wrap: wrap; }
+
+  button{
+    font-family: inherit;
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--line);
+    padding: 8px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  button:hover{ border-color: var(--cyan); color: var(--cyan); }
+  button:focus-visible{ outline: 2px solid var(--cyan); outline-offset: 2px; }
+  button.primary{
+    background: var(--amber);
+    color: #1a1200;
+    border-color: var(--amber);
+    font-weight: 700;
+  }
+  button.primary:hover{ border-color: var(--amber); color: #1a1200; opacity: 0.9; }
+  button.danger:hover{ border-color: var(--danger); color: var(--danger); }
+
+  .algo-select{
+    display:flex; gap:8px; flex-wrap:wrap; margin-bottom: 14px;
+  }
+  .algo-btn{
+    padding: 8px 12px;
+    border-radius: 4px;
+    border: 1px solid var(--line);
+    background: var(--panel-2);
+    color: var(--muted);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.78rem;
+  }
+  .algo-btn.active{
+    border-color: var(--cyan);
+    color: var(--cyan);
+    background: rgba(121,223,255,0.08);
+  }
+
+  .quantum-field{
+    display:flex; align-items:center; gap:10px;
+    margin-top: 4px;
+  }
+  .quantum-field label{ font-size:0.78rem; color: var(--muted); }
+  .quantum-field input{ width: 70px; }
+
+  /* Gantt chart */
+  .gantt-scroll{ overflow-x: auto; padding-bottom: 6px; }
+  .gantt{
+    display:flex;
+    min-width: max-content;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .gantt-block{
+    position: relative;
+    display:flex; align-items:center; justify-content:center;
+    height: 52px;
+    color: #0d1117;
+    font-weight: 700;
+    font-size: 0.78rem;
+    border-right: 1px solid rgba(13,17,23,0.4);
+    min-width: 34px;
+    white-space: nowrap;
+    padding: 0 4px;
+  }
+  .gantt-block:last-child{ border-right: none; }
+  .gantt-block.idle{
+    background: repeating-linear-gradient(45deg, #1c2128, #1c2128 6px, #21262d 6px, #21262d 12px);
+    color: var(--muted);
+    font-weight: 500;
+  }
+  .gantt-ticks{
+    display:flex; min-width: max-content; margin-top: 4px;
+  }
+  .tick{
+    font-size: 0.65rem; color: var(--muted);
+    border-right: 1px dashed transparent;
+    min-width: 34px;
+    text-align: left;
+  }
+
+  .metrics-summary{
+    display:flex; gap: 20px; flex-wrap: wrap;
+    margin-top: 16px;
+    font-size: 0.8rem;
+  }
+  .metrics-summary .stat{ color: var(--muted); }
+  .metrics-summary .stat b{ color: var(--amber); font-size: 0.95rem; }
+
+  footer{
+    text-align:center; color: var(--muted); font-size: 0.7rem;
+    margin-top: 30px; letter-spacing: 0.04em;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .dot{ animation: none; }
+  }
+
+  @media (max-width: 600px){
+    header{ flex-direction: column; align-items: flex-start; }
+    .panel{ padding: 14px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>SCHED<span class="slash">//</span>VISUALIZER</h1>
+    <div class="status"><span class="dot"></span>CPU IDLE — AWAITING INPUT</div>
+  </header>
+
+  <div class="panel">
+    <h2>Process Queue</h2>
+    <table id="procTable">
+      <thead>
+        <tr>
+          <th style="width:60px">PID</th>
+          <th>Arrival</th>
+          <th>Burst</th>
+          <th>Priority</th>
+          <th style="width:40px"></th>
+        </tr>
+      </thead>
+      <tbody id="procBody"></tbody>
+    </table>
+    <div class="row-actions">
+      <button id="addRow">+ ADD PROCESS</button>
+      <button id="loadSample">LOAD SAMPLE SET</button>
+      <button id="clearAll" class="danger">CLEAR ALL</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Algorithm</h2>
+    <div class="algo-select" id="algoSelect">
+      <div class="algo-btn active" data-algo="fcfs">FCFS</div>
+      <div class="algo-btn" data-algo="sjf">SJF (Non-Preemptive)</div>
+      <div class="algo-btn" data-algo="rr">Round Robin</div>
+      <div class="algo-btn" data-algo="priority">Priority (Non-Preemptive)</div>
+    </div>
+    <div class="quantum-field" id="quantumField" style="display:none">
+      <label for="quantum">TIME QUANTUM</label>
+      <input type="number" id="quantum" value="2" min="1">
+    </div>
+    <div class="row-actions">
+      <button class="primary" id="runBtn">▶ RUN SCHEDULER</button>
+    </div>
+  </div>
+
+  <div class="panel" id="resultPanel" style="display:none">
+    <h2>Gantt Chart</h2>
+    <div class="gantt-scroll">
+      <div class="gantt" id="ganttChart"></div>
+      <div class="gantt-ticks" id="ganttTicks"></div>
+    </div>
+
+    <h2 style="margin-top:26px">Metrics</h2>
+    <table id="metricsTable">
+      <thead>
+        <tr>
+          <th>PID</th><th>Arrival</th><th>Burst</th><th>Completion</th>
+          <th>Turnaround</th><th>Waiting</th>
+        </tr>
+      </thead>
+      <tbody id="metricsBody"></tbody>
+    </table>
+    <div class="metrics-summary" id="metricsSummary"></div>
+  </div>
+
+  <footer>BUILT FOR STUDYING CPU SCHEDULING · FCFS · SJF · ROUND ROBIN · PRIORITY</footer>
+</div>
+
+<script>
+const COLORS = ['#ffb86c','#79dfff','#7ee787','#ff9edb','#d2a8ff','#ffd866','#8be9fd','#ff8787','#b5f4a5','#f5c2e7'];
+
+let processes = [];
+let pidCounter = 1;
+let currentAlgo = 'fcfs';
+
+function colorFor(index){ return COLORS[index % COLORS.length]; }
+
+function addProcess(arrival=0, burst=1, priority=1){
+  processes.push({ id: pidCounter++, arrival, burst, priority });
+  renderTable();
+}
+
+function renderTable(){
+  const body = document.getElementById('procBody');
+  body.innerHTML = '';
+  processes.forEach((p, idx) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><span class="pid-tag"><span class="swatch" style="background:${colorFor(idx)}"></span>P${p.id}</span></td>
+      <td><input type="number" min="0" value="${p.arrival}" data-field="arrival" data-id="${p.id}"></td>
+      <td><input type="number" min="1" value="${p.burst}" data-field="burst" data-id="${p.id}"></td>
+      <td><input type="number" min="1" value="${p.priority}" data-field="priority" data-id="${p.id}"></td>
+      <td><button data-remove="${p.id}" title="Remove" style="padding:6px 9px">×</button></td>
+    `;
+    body.appendChild(tr);
+  });
+
+  body.querySelectorAll('input').forEach(inp => {
+    inp.addEventListener('input', e => {
+      const id = Number(e.target.dataset.id);
+      const field = e.target.dataset.field;
+      const proc = processes.find(p => p.id === id);
+      let val = Number(e.target.value);
+      if(isNaN(val) || val < 0) val = 0;
+      proc[field] = val;
+    });
+  });
+  body.querySelectorAll('[data-remove]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      const id = Number(e.target.dataset.remove);
+      processes = processes.filter(p => p.id !== id);
+      renderTable();
+    });
+  });
+}
+
+document.getElementById('addRow').addEventListener('click', () => {
+  const lastArrival = processes.length ? processes[processes.length-1].arrival : 0;
+  addProcess(lastArrival, 4, 1);
+});
+
+document.getElementById('loadSample').addEventListener('click', () => {
+  processes = [];
+  pidCounter = 1;
+  addProcess(0, 5, 2);
+  addProcess(1, 3, 1);
+  addProcess(2, 8, 3);
+  addProcess(3, 6, 2);
+});
+
+document.getElementById('clearAll').addEventListener('click', () => {
+  processes = [];
+  pidCounter = 1;
+  renderTable();
+  document.getElementById('resultPanel').style.display = 'none';
+});
+
+document.getElementById('algoSelect').addEventListener('click', e => {
+  const btn = e.target.closest('.algo-btn');
+  if(!btn) return;
+  document.querySelectorAll('.algo-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentAlgo = btn.dataset.algo;
+  document.getElementById('quantumField').style.display = currentAlgo === 'rr' ? 'flex' : 'none';
+});
+
+document.getElementById('runBtn').addEventListener('click', runScheduler);
+
+// ---- Scheduling algorithms ----
+// Each returns { segments: [{id, start, end}], completion: {id: time} }
+
+function fcfs(procs){
+  const sorted = [...procs].sort((a,b) => a.arrival - b.arrival || a.id - b.id);
+  const segments = [];
+  const completion = {};
+  let time = 0;
+  for(const p of sorted){
+    if(time < p.arrival){
+      segments.push({ id: 'idle', start: time, end: p.arrival });
+      time = p.arrival;
+    }
+    const start = time;
+    const end = time + p.burst;
+    segments.push({ id: p.id, start, end });
+    completion[p.id] = end;
+    time = end;
+  }
+  return { segments, completion };
+}
+
+function sjf(procs){
+  const remaining = [...procs];
+  const segments = [];
+  const completion = {};
+  let time = 0;
+  while(remaining.length){
+    const available = remaining.filter(p => p.arrival <= time);
+    if(!available.length){
+      const nextArrival = Math.min(...remaining.map(p => p.arrival));
+      segments.push({ id: 'idle', start: time, end: nextArrival });
+      time = nextArrival;
+      continue;
+    }
+    available.sort((a,b) => a.burst - b.burst || a.arrival - b.arrival || a.id - b.id);
+    const p = available[0];
+    const start = time;
+    const end = time + p.burst;
+    segments.push({ id: p.id, start, end });
+    completion[p.id] = end;
+    time = end;
+    remaining.splice(remaining.indexOf(p), 1);
+  }
+  return { segments, completion };
+}
+
+function priorityNP(procs){
+  const remaining = [...procs];
+  const segments = [];
+  const completion = {};
+  let time = 0;
+  while(remaining.length){
+    const available = remaining.filter(p => p.arrival <= time);
+    if(!available.length){
+      const nextArrival = Math.min(...remaining.map(p => p.arrival));
+      segments.push({ id: 'idle', start: time, end: nextArrival });
+      time = nextArrival;
+      continue;
+    }
+    // lower priority number = higher priority
+    available.sort((a,b) => a.priority - b.priority || a.arrival - b.arrival || a.id - b.id);
+    const p = available[0];
+    const start = time;
+    const end = time + p.burst;
+    segments.push({ id: p.id, start, end });
+    completion[p.id] = end;
+    time = end;
+    remaining.splice(remaining.indexOf(p), 1);
+  }
+  return { segments, completion };
+}
+
+function roundRobin(procs, quantum){
+  const remainingBurst = {};
+  procs.forEach(p => remainingBurst[p.id] = p.burst);
+  const sortedByArrival = [...procs].sort((a,b) => a.arrival - b.arrival || a.id - b.id);
+  const queue = [];
+  const segments = [];
+  const completion = {};
+  let time = 0;
+  let idx = 0; // pointer into sortedByArrival for processes not yet queued
+  const n = procs.length;
+  let done = 0;
+
+  // seed queue with anything arriving at time 0
+  function enqueueArrivals(upTo){
+    while(idx < n && sortedByArrival[idx].arrival <= upTo){
+      queue.push(sortedByArrival[idx]);
+      idx++;
+    }
+  }
+
+  enqueueArrivals(time);
+  if(queue.length === 0 && idx < n){
+    time = sortedByArrival[idx].arrival;
+    enqueueArrivals(time);
+  }
+
+  while(done < n){
+    if(queue.length === 0){
+      if(idx < n){
+        const nextArrival = sortedByArrival[idx].arrival;
+        segments.push({ id: 'idle', start: time, end: nextArrival });
+        time = nextArrival;
+        enqueueArrivals(time);
+      } else break;
+      continue;
+    }
+    const p = queue.shift();
+    const runTime = Math.min(quantum, remainingBurst[p.id]);
+    const start = time;
+    const end = time + runTime;
+    segments.push({ id: p.id, start, end });
+    time = end;
+    remainingBurst[p.id] -= runTime;
+
+    enqueueArrivals(time);
+
+    if(remainingBurst[p.id] > 0){
+      queue.push(p);
+    } else {
+      completion[p.id] = end;
+      done++;
+    }
+  }
+  return { segments, completion };
+}
+
+function mergeAdjacentIdle(segments){
+  // merge consecutive idle blocks and consecutive same-pid blocks (RR can produce back-to-back same pid rarely)
+  const merged = [];
+  for(const seg of segments){
+    const last = merged[merged.length-1];
+    if(last && last.id === seg.id && last.end === seg.start){
+      last.end = seg.end;
+    } else {
+      merged.push({...seg});
+    }
+  }
+  return merged;
+}
+
+function runScheduler(){
+  if(processes.length === 0){
+    alert('Add at least one process first.');
+    return;
+  }
+  for(const p of processes){
+    if(p.burst <= 0){
+      alert(`P${p.id} needs a burst time greater than 0.`);
+      return;
+    }
+  }
+
+  let result;
+  if(currentAlgo === 'fcfs') result = fcfs(processes);
+  else if(currentAlgo === 'sjf') result = sjf(processes);
+  else if(currentAlgo === 'priority') result = priorityNP(processes);
+  else if(currentAlgo === 'rr'){
+    const q = Number(document.getElementById('quantum').value) || 1;
+    result = roundRobin(processes, q);
+  }
+
+  const segments = mergeAdjacentIdle(result.segments);
+  renderGantt(segments);
+  renderMetrics(result.completion);
+
+  document.getElementById('resultPanel').style.display = 'block';
+  document.getElementById('resultPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function renderGantt(segments){
+  const gantt = document.getElementById('ganttChart');
+  const ticks = document.getElementById('ganttTicks');
+  gantt.innerHTML = '';
+  ticks.innerHTML = '';
+
+  const pxPerUnit = 34;
+  const idIndex = {};
+  processes.forEach((p, i) => idIndex[p.id] = i);
+
+  segments.forEach(seg => {
+    const width = Math.max(1, seg.end - seg.start) * pxPerUnit;
+    const block = document.createElement('div');
+    block.className = 'gantt-block' + (seg.id === 'idle' ? ' idle' : '');
+    block.style.width = width + 'px';
+    block.style.minWidth = width + 'px';
+    if(seg.id !== 'idle'){
+      block.style.background = colorFor(idIndex[seg.id]);
+      block.textContent = `P${seg.id}`;
+    } else {
+      block.textContent = 'IDLE';
+    }
+    block.title = `${seg.id === 'idle' ? 'Idle' : 'P'+seg.id}: ${seg.start} → ${seg.end}`;
+    gantt.appendChild(block);
+
+    const tick = document.createElement('div');
+    tick.className = 'tick';
+    tick.style.width = width + 'px';
+    tick.style.minWidth = width + 'px';
+    tick.textContent = seg.start;
+    ticks.appendChild(tick);
+  });
+
+  // final tick
+  if(segments.length){
+    const lastTick = document.createElement('div');
+    lastTick.className = 'tick';
+    lastTick.style.minWidth = '30px';
+    lastTick.textContent = segments[segments.length-1].end;
+    ticks.appendChild(lastTick);
+  }
+}
+
+function renderMetrics(completion){
+  const body = document.getElementById('metricsBody');
+  body.innerHTML = '';
+  let totalTAT = 0, totalWT = 0;
+
+  const sorted = [...processes].sort((a,b) => a.id - b.id);
+  sorted.forEach(p => {
+    const comp = completion[p.id];
+    const tat = comp - p.arrival;
+    const wt = tat - p.burst;
+    totalTAT += tat;
+    totalWT += wt;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>P${p.id}</td>
+      <td>${p.arrival}</td>
+      <td>${p.burst}</td>
+      <td>${comp}</td>
+      <td>${tat}</td>
+      <td>${wt}</td>
+    `;
+    body.appendChild(tr);
+  });
+
+  const n = sorted.length;
+  const summary = document.getElementById('metricsSummary');
+  summary.innerHTML = `
+    <div class="stat">AVG TURNAROUND: <b>${(totalTAT/n).toFixed(2)}</b></div>
+    <div class="stat">AVG WAITING: <b>${(totalWT/n).toFixed(2)}</b></div>
+  `;
+}
+
+// init
+addProcess(0, 5, 2);
+addProcess(1, 3, 1);
+addProcess(2, 8, 3);
+</script>
+</body>
+</html>
